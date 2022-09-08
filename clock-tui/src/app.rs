@@ -43,12 +43,16 @@ pub enum Mode {
     Timer {
         /// Initial duration for timer, value can be 10s for 10 seconds, 1m for 1 minute, etc.
         /// Also accept mulitple duration value and run the timers sequentially, eg. 25m 5m
-        #[clap(short, long="duration", value_parser = parse_duration, min_values=1, default_value = "5m")]
+        #[clap(short, long="duration", value_parser = parse_duration, min_values = 1, default_value = "5m")]
         durations: Vec<Duration>,
 
         /// Set the title for the timer, also accept mulitple titles for each durations correspondingly
         #[clap(short, long = "title", min_values = 0)]
         titles: Vec<String>,
+
+        /// Set the title for the timer, also accept mulitple titles for each durations correspondingly
+        #[clap(short, long = "color", min_values = 0, value_parser = parse_color)]
+        colors: Vec<Color>,
 
         /// Restart the timer when timer is over
         #[clap(long, short, takes_value = false)]
@@ -161,6 +165,7 @@ impl App {
             Mode::Timer {
                 durations,
                 titles,
+                colors,
                 repeat,
                 no_millis,
                 paused,
@@ -171,11 +176,18 @@ impl App {
                 } else {
                     DurationFormat::HourMinSecDeci
                 };
+                let colors = if colors.is_empty() {
+                    vec![self.color]
+                } else {
+                    colors.to_owned()
+                };
+
                 self.timer = Some(Timer::new(
                     self.size,
                     style,
                     durations.to_owned(),
                     titles.to_owned(),
+                    colors,
                     *repeat,
                     format,
                     *paused,

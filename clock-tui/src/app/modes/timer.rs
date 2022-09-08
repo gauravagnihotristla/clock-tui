@@ -2,7 +2,12 @@ use std::{cell::RefCell, cmp::min, process::Command};
 
 use crate::clock_text::BricksText;
 use chrono::{DateTime, Duration, Local};
-use tui::{buffer::Buffer, layout::Rect, style::Style, widgets::Widget};
+use tui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Color, Style},
+    widgets::Widget,
+};
 
 use crate::app::Pause;
 
@@ -14,6 +19,7 @@ pub struct Timer {
     pub repeat: bool,
     pub durations: Vec<Duration>,
     pub titles: Vec<String>,
+    pub colors: Vec<Color>,
     pub execute: Vec<String>,
     format: DurationFormat,
     passed: Duration,
@@ -28,6 +34,7 @@ impl Timer {
         style: Style,
         durations: Vec<Duration>,
         titles: Vec<String>,
+        colors: Vec<Color>,
         repeat: bool,
         format: DurationFormat,
         paused: bool,
@@ -38,6 +45,7 @@ impl Timer {
             style,
             durations,
             titles,
+            colors,
             repeat,
             execute,
             format,
@@ -47,7 +55,7 @@ impl Timer {
         }
     }
 
-    pub(crate) fn remaining_time(&self) -> (Duration, usize) {
+    pub(crate) fn remaining_time(&self) -> (Duration, usize, usize) {
         let total_passed = if let Some(started_at) = self.started_at {
             self.passed + (Local::now() - started_at)
         } else {
@@ -56,15 +64,21 @@ impl Timer {
 
         let mut idx = 0;
         let mut next_checkpoint = self.durations[idx];
+        let mut round = 1;
+        let count = self.durations.len();
         while next_checkpoint < total_passed {
-            if idx >= self.durations.len() - 1 && !self.repeat {
+            if idx >= count - 1 && !self.repeat {
                 break;
             }
-            idx = (idx + 1) % self.durations.len();
+            idx += 1;
+            if idx >= count {
+                idx %= count;
+                round += 1;
+            }
             next_checkpoint = next_checkpoint + self.durations[idx];
         }
 
-        (next_checkpoint - total_passed, idx)
+        (next_checkpoint - total_passed, idx, round)
     }
 }
 
@@ -90,7 +104,7 @@ fn execute(execute: &[String]) -> String {
 
 impl Widget for &Timer {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let (remaining_time, idx) = self.remaining_time();
+        let (remaining_time, idx, round) = self.remaining_time();
         let time_str = if remaining_time < Duration::zero() {
             if !self.execute.is_empty() && self.execute_result.borrow().is_none() {
                 let result = execute(&self.execute);
@@ -108,10 +122,23 @@ impl Widget for &Timer {
         let header = if self.titles.is_empty() {
             None
         } else {
-            Some(self.titles[min(idx, self.titles.len() - 1)].clone())
+            let title = self.titles[min(idx, self.titles.len() - 1)].clone();
+            let title = if self.repeat {
+                format!("{} - {}", title, round)
+            } else {
+                title
+            };
+
+            Some(title)
         };
 
-        let text = BricksText::new(time_str.as_str(), self.size, self.size, self.style);
+        let color = self.colors[min(idx, self.colors.len() - 1)];
+        let text = BricksText::new(
+            time_str.as_str(),
+            self.size,
+            self.size,
+            self.style.fg(color),
+        );
         let footer = if self.is_paused() {
             Some("PAUSED (press <SPACE> to resume)".to_string())
         } else {
